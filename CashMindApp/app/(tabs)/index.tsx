@@ -1,74 +1,228 @@
-import { Image, StyleSheet, Platform } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, ScrollView, View, TouchableOpacity, RefreshControl } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
+import { getFinancialSummary, getTasks, updateTask, FinancialSummary, Task } from '@/services/api';
 
 export default function HomeScreen() {
+  const [summary, setSummary] = useState<FinancialSummary | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = async () => {
+    try {
+      const [summaryData, tasksData] = await Promise.all([
+        getFinancialSummary(),
+        getTasks()
+      ]);
+      setSummary(summaryData);
+      setTasks(tasksData.slice(0, 5)); // Show only first 5 tasks
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  };
+
+  const toggleTaskCompletion = async (task: Task) => {
+    if (task.id) {
+      try {
+        await updateTask(task.id, { completed: !task.completed });
+        loadData();
+      } catch (error) {
+        console.error('Error updating task:', error);
+      }
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return '#FF5252';
+      case 'medium': return '#FFC107';
+      case 'low': return '#4CAF50';
+      default: return '#4CAF50';
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <ThemedView style={styles.header}>
+        <ThemedText type="title" style={styles.headerTitle}>CashMind</ThemedText>
+        <ThemedText style={styles.headerSubtitle}>Budget & Task Manager</ThemedText>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
+
+      <ThemedView style={styles.section}>
+        <ThemedText type="subtitle" style={styles.sectionTitle}>Financial Summary</ThemedText>
+        
+        <View style={styles.summaryGrid}>
+          <View style={[styles.summaryCard, { backgroundColor: '#4CAF50' }]}>
+            <ThemedText style={styles.summaryLabel}>Money In</ThemedText>
+            <ThemedText style={styles.summaryAmount}>${summary?.money_in?.toFixed(2) || '0.00'}</ThemedText>
+          </View>
+          
+          <View style={[styles.summaryCard, { backgroundColor: '#FF5252' }]}>
+            <ThemedText style={styles.summaryLabel}>Money Out</ThemedText>
+            <ThemedText style={styles.summaryAmount}>${summary?.money_out?.toFixed(2) || '0.00'}</ThemedText>
+          </View>
+          
+          <View style={[styles.summaryCard, { backgroundColor: '#FF9800' }]}>
+            <ThemedText style={styles.summaryLabel}>Borrowed</ThemedText>
+            <ThemedText style={styles.summaryAmount}>${summary?.amount_borrowed?.toFixed(2) || '0.00'}</ThemedText>
+          </View>
+          
+          <View style={[styles.summaryCard, { backgroundColor: '#2196F3' }]}>
+            <ThemedText style={styles.summaryLabel}>Owed to Me</ThemedText>
+            <ThemedText style={styles.summaryAmount}>${summary?.amount_owed?.toFixed(2) || '0.00'}</ThemedText>
+          </View>
+          
+          <View style={[styles.summaryCard, { backgroundColor: '#9C27B0' }]}>
+            <ThemedText style={styles.summaryLabel}>Saved</ThemedText>
+            <ThemedText style={styles.summaryAmount}>${summary?.amount_saved?.toFixed(2) || '0.00'}</ThemedText>
+          </View>
+        </View>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
+
+      <ThemedView style={styles.section}>
+        <ThemedText type="subtitle" style={styles.sectionTitle}>Upcoming Tasks</ThemedText>
+        {tasks.length === 0 ? (
+          <ThemedText style={styles.emptyText}>No tasks yet. Create one in the To-Do tab!</ThemedText>
+        ) : (
+          tasks.map((task) => (
+            <TouchableOpacity 
+              key={task.id} 
+              style={styles.taskItem}
+              onPress={() => toggleTaskCompletion(task)}
+            >
+              <View style={styles.taskContent}>
+                <View style={[styles.priorityIndicator, { backgroundColor: getPriorityColor(task.priority) }]} />
+                <View style={styles.taskDetails}>
+                  <ThemedText 
+                    style={[styles.taskTitle, task.completed && styles.taskCompleted]}
+                  >
+                    {task.title}
+                  </ThemedText>
+                  {task.due_date && (
+                    <ThemedText style={styles.taskDate}>Due: {task.due_date}</ThemedText>
+                  )}
+                </View>
+                <View style={styles.checkbox}>
+                  {task.completed && <ThemedText style={styles.checkmark}>✓</ThemedText>}
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))
+        )}
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
   },
-  stepContainer: {
-    gap: 8,
+  header: {
+    padding: 20,
+    paddingTop: 60,
+    backgroundColor: '#4CAF50',
+  },
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    color: '#FFF',
+    fontSize: 16,
+    opacity: 0.9,
+  },
+  section: {
+    padding: 20,
+  },
+  sectionTitle: {
+    marginBottom: 15,
+  },
+  summaryGrid: {
+    gap: 12,
+  },
+  summaryCard: {
+    padding: 16,
+    borderRadius: 12,
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  summaryLabel: {
+    color: '#FFF',
+    fontSize: 14,
+    opacity: 0.9,
+    marginBottom: 4,
+  },
+  summaryAmount: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  taskItem: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  taskContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  priorityIndicator: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  taskDetails: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  taskCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  taskDate: {
+    fontSize: 12,
+    opacity: 0.7,
+    marginTop: 2,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkmark: {
+    color: '#4CAF50',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  emptyText: {
+    textAlign: 'center',
+    opacity: 0.5,
+    marginTop: 20,
   },
 });
